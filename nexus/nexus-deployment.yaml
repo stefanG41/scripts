@@ -24,10 +24,10 @@ spec:
         image: sonatype/nexus3:latest
         resources:
           limits:
-            memory: "1Gi"
+            memory: "2Gi"
         env:
           - name: INSTALL4J_ADD_VM_PARAMS
-            value: "-Xms1g -Xmx1g"
+            value: "-Xms2g -Xmx2g"
         ports:
         - containerPort: 8081
         volumeMounts:
