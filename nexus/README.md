@@ -14,3 +14,5 @@ kubectl delete -f nexus-service.yaml
 
 Your admin user password is located in
 /nexus-data/admin.password on the server.
+
+kubectl create secret generic nexus-admin-password --from-literal=password='Test1234'
