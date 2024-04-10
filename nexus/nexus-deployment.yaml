@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nexus
+  template:
+    metadata:
+      labels:
+        app: nexus
+    spec:
+      initContainers:
+      - name: fix-perms
+        image: busybox
+        command: ['sh', '-c', 'chown -R 200:200 /nexus-data']
+        volumeMounts:
+        - name: nexus-data
+          mountPath: /nexus-data
+      containers:
+      - name: nexus
+        image: sonatype/nexus3:latest
+        resources:
+          limits:
+            memory: "1Gi"
+        env:
+          - name: INSTALL4J_ADD_VM_PARAMS
+            value: "-Xms1g -Xmx1g"
+        ports:
+        - containerPort: 8081
+        volumeMounts:
+        - name: nexus-data
+          mountPath: /nexus-data
+      volumes:
+      - name: nexus-data
+        persistentVolumeClaim:
+          claimName: nexus-pvc
