@@ -15,7 +15,7 @@ kubectl delete -f nexus-service.yaml
 Your admin user password is located in
 /nexus-data/admin.password on the server.
 
-kubectl create secret generic nexus-admin-password --from-literal=password='Test1234'
+kubectl create secret generic nexus-admin-password --from-literal=password='XXXXxxxxXXXX'
 
 # Zuerst speichern wir den Namen des ersten gefundenen laufenden Pods, der mit "nexus" beginnt, in einer Variable
 POD_NAME=$(kubectl get pods --field-selector=status.phase=Running | grep ^nexus | awk '{print $1}' | head -n 1)
