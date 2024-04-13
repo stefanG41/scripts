@@ -4,7 +4,7 @@ metadata:
   name: nextcloud
   namespace: nextcloud-namespace
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: nextcloud
