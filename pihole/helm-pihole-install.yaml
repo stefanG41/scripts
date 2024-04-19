@@ -1,0 +1,25 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: helm-pihole-install
+  namespace: pihole
+spec:
+  template:
+    spec:
+      containers:
+      - name: helm
+        image: alpine/helm:latest
+        command: ["/bin/sh"]
+        args:
+          - -c
+          - |
+            # Konfiguration von Helm und hinzufügen des Repositories
+            helm repo add mojo2600 https://mojo2600.github.io/pihole-kubernetes/ &&
+            helm repo update &&
+            # Installation von Pi-hole
+            helm install my-pihole mojo2600/pihole \
+              --version 2.23.0 \
+              --set service.type=LoadBalancer \
+              --namespace pihole
+      restartPolicy: Never
+  backoffLimit: 4
