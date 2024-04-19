@@ -1,10 +1,17 @@
-apiVersion: batch/v1
-kind: Job
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: helm-pihole-install
+  name: helm-pihole-deploy
   namespace: pihole
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pihole
   template:
+    metadata:
+      labels:
+        app: pihole
     spec:
       containers:
       - name: helm
@@ -16,10 +23,18 @@ spec:
             # Konfiguration von Helm und hinzufügen des Repositories
             helm repo add mojo2600 https://mojo2600.github.io/pihole-kubernetes/ &&
             helm repo update &&
+            # Warte auf die Verfügbarkeit des Repos
+            sleep 30 &&
             # Installation von Pi-hole
             helm install my-pihole mojo2600/pihole \
               --version 2.23.0 \
               --set service.type=LoadBalancer \
               --namespace pihole
-      restartPolicy: Never
-  backoffLimit: 4
+        volumeMounts:
+        - name: helm-vol
+          mountPath: /root/.config/helm
+          readOnly: false
+      volumes:
+      - name: helm-vol
+        emptyDir: {}
+      restartPolicy: Always
