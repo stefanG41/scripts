@@ -59,3 +59,4 @@ spec:
       - name: nexus-data
         persistentVolumeClaim:
           claimName: nexus-pvc
+#test1
