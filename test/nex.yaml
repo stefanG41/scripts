@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexus
+  namespace: nexus-namespace
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nexus
+  template:
+    metadata:
+      labels:
+        app: nexus
+    spec:
+      affinity:  # Aktivieren Sie dies, wenn Sie die Pod-Affinität nutzen möchten
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                    - nexus
+              topologyKey: "kubernetes.io/hostname"
+      initContainers:
+      - name: fix-perms
+        image: busybox
+        command: ['sh', '-c', 'chown -R 200:200 /nexus-data']
+        volumeMounts:
+        - name: nexus-data
+          mountPath: /nexus-data
+      containers:
+      - name: nexus
+        image: sonatype/nexus3:latest
+        resources:
+          limits:
+            memory: "2Gi"
+            cpu: "4"
+          requests:
+            memory: "2Gi"
+            cpu: "2"
+        env:
+          - name: INSTALL4J_ADD_VM_PARAMS
+            value: "-Xms2g -Xmx2g"
+          - name: NEXUS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: nexus-admin-password
+                key: password
+        ports:
+        - containerPort: 8081
+        volumeMounts:
+        - name: nexus-data
+          mountPath: /nexus-data
+      volumes:
+      - name: nexus-data
+        persistentVolumeClaim:
+          claimName: nexus-pvc
+#test1
+#test2
