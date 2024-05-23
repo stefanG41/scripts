@@ -5,3 +5,6 @@ export POD_NAME=$(kubectl get pods --namespace uptime-kuma -l "app.kubernetes.io
     export CONTAINER_PORT=$(kubectl get pod --namespace uptime-kuma $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
     echo "Visit http://127.0.0.1:3001 to use your application"
     kubectl --namespace uptime-kuma port-forward $POD_NAME 3001:$CONTAINER_PORT
+
+
+kubectl create secret generic ssh-key-secret --from-file=id_rsa=/home/ubuntu/id_rsa -n uptime-kuma
