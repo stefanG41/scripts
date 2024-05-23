@@ -18,7 +18,7 @@ spec:
             - |
               # Installiere notwendige Pakete
               apt-get update && \
-              apt-get install -y openssh-client && \
+              apt-get install -y openssh-client nano && \
               # Erstelle das Verzeichnis /root/.ssh
               mkdir -p /root/.ssh && \
               # Kopiere den SSH-Schlüssel und setze die Berechtigungen
@@ -29,7 +29,7 @@ spec:
               # Erstelle ein Archiv der Daten
               tar -czf /tmp/app-data-$(date +\%F).tar.gz -C /app/data . && \
               # Übertrage das Archiv via SCP
-              scp -i /root/.ssh/id_rsa /tmp/app-data-$(date +\%F).tar.gz root@192.168.1.204:/srv/nfs/uptime-kuma/
+              scp -i /root/.ssh/id_rsa /tmp/app-data-$(date +\%F)-${CLUSTER_NAME}.tar.gz root@192.168.1.204:/srv/nfs/uptime-kuma/
             volumeMounts:
             - mountPath: /app/data
               name: app-data
