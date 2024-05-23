@@ -27,9 +27,15 @@ spec:
               # Füge den Host-Schlüssel hinzu
               ssh-keyscan -H 192.168.1.204 >> /root/.ssh/known_hosts && \
               # Erstelle ein Archiv der Daten
-              tar -czf /tmp/app-data-$(date +\%F).tar.gz -C /app/data . && \
+              tar -czf /tmp/app-data-$(date +\%F)-${CLUSTER_NAME}.tar.gz -C /app/data . && \
               # Übertrage das Archiv via SCP
               scp -i /root/.ssh/id_rsa /tmp/app-data-$(date +\%F)-${CLUSTER_NAME}.tar.gz root@192.168.1.204:/srv/nfs/uptime-kuma/
+            env:
+            - name: CLUSTER_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: cluster-info
+                  key: cluster-name
             volumeMounts:
             - mountPath: /app/data
               name: app-data
