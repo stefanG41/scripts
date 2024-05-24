@@ -5,6 +5,9 @@ DEPLOYMENT_NAME=my-uptime-kuma
 BACKUP_PFAD=/home/ubuntu/scripts/uptime-kuma
 BACKUP_NAME=app-data.tar.gz
 
+#Copy last  backup from Backupserver
+scp -i /home/ubuntu/.ssh/id_rsa root@192.168.1.204:/srv/nfs/uptime-kuma/app-data-$(date +\%F).tar.gz /home/ubuntu/scripts/uptime-kuma/app-data.tar.gz
+
 # Scale down the deployment
 kubectl scale deployment/$DEPLOYMENT_NAME --replicas=0 -n $NAMESPACE
 
