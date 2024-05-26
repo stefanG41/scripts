@@ -12,3 +12,5 @@ kubectl create secret generic ssh-key-secret --from-file=id_rsa=/home/ubuntu/id_
 scp -i /root/.ssh/id_rsa sshkey-uptime-kuma-setup/id_rsa* root@192.168.1.204:/srv/nfs/sshkey-uptime-kuma-setup/.
 
 scp -i /root/.ssh/id_rsa root@192.168.1.204:/srv/nfs/sshkey-uptime-kuma-setup/id_rsa /home/ubuntu/id_rsa
+cp ~/id_rsa ~/.ssh/.
+chmod 600 ~/.ssh/id_rsa
