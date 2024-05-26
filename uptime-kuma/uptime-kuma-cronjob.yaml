@@ -46,7 +46,7 @@ spec:
           volumes:
           - name: app-data
             persistentVolumeClaim:
-              claimName: my-uptime-kuma-pvc  # Der PVC, der die Daten speichert
+              claimName: uptime-kuma-pvc  # Der PVC, der die Daten speichert
           - name: ssh-key-volume
             secret:
               secretName: ssh-key-secret  # Das Secret, das den SSH Private Key enthält
