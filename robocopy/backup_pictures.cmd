@@ -29,36 +29,34 @@ set "LOG=%LOGDIR%\robocopy_backup_%TS%.log"
 exit /b 0
 
 :ERROR_POPUP
-:: Übergabe: %~1 = Meldungstext (in Anführungszeichen übergeben!)
+:: Übergabe: %~1 = Meldungstext in einfachen Quotes:  'Text...'
 powershell -NoProfile -Command "$ws=New-Object -ComObject WScript.Shell; $ws.Popup(%~1,10,'Bilder-Backup',16)" >nul 2>&1
 exit /b 0
 
 :CHECK_DEST
-:: Prüft E:\ und den Ordner E:\backup_bilder, bricht ggf. ab
+:: Prüft Laufwerk E:\ und Ordner E:\backup_bilder
 set "DRIVE=%DST:~0,2%"
 if not exist "%DRIVE%\" (
   echo [FEHLER] Laufwerk %DRIVE% nicht gefunden!
   call :ERROR_POPUP " 'FEHLER: Kein Laufwerk %DRIVE% erkannt. Bitte externe Festplatte anschließen!' "
-  set "RC=1"
-  goto END_ERR
+  exit /b 1
 )
 if not exist "%DST%" (
   echo [FEHLER] Zielordner "%DST%" nicht gefunden!
   call :ERROR_POPUP " 'FEHLER: Der Ordner ""%DST%"" existiert nicht. Bitte richtige HDD anschließen!' "
-  set "RC=1"
-  goto END_ERR
+  exit /b 1
 )
 
-:: Optionaler Schreibtest (kommentiert). Zum Aktivieren: 'rem' entfernen.
+:: Optionaler Schreibtest (aktivieren: 'rem' entfernen)
 :: >"%DST%\.__write_test__" echo OK >nul 2>&1
 :: if errorlevel 1 (
 ::   echo [FEHLER] Keine Schreibrechte in "%DST%".
 ::   call :ERROR_POPUP " 'FEHLER: Keine Schreibrechte in ""%DST%"".' "
-::   set "RC=1"
-::   goto END_ERR
+::   exit /b 1
 :: ) else (
 ::   del /q "%DST%\.__write_test__" >nul 2>&1
 :: )
+
 exit /b 0
 
 :: ===================================================
@@ -87,8 +85,12 @@ if exist "%FLAGFILE%" (
   )
 )
 
-:: Ziel strikt prüfen (Laufwerk + Ordner)
+:: Ziel strikt prüfen (Laufwerk + Ordner) → bei Fehler sofort abbrechen
 call :CHECK_DEST
+if errorlevel 1 (
+  set "RC=1"
+  goto END_ERR
+)
 
 :: Ergänzungs-Backup (Option 1)
 echo Starte Ergaenzungs-Backup...
@@ -130,6 +132,10 @@ if errorlevel 1 goto DO_ADD
 
 :DO_ADD
 call :CHECK_DEST
+if errorlevel 1 (
+  set "RC=1"
+  goto END_ERR
+)
 echo Starte Ergaenzungs-Backup...
 robocopy "%SRC%" "%DST%" /E /XC /XN /XO /R:1 /W:1 /XJ /TEE /MT:16 /LOG+:"%LOG%"
 set "RC=%ERRORLEVEL%"
@@ -137,6 +143,10 @@ goto SUMMARY
 
 :DO_MIR
 call :CHECK_DEST
+if errorlevel 1 (
+  set "RC=1"
+  goto END_ERR
+)
 echo Starte Spiegel-Backup. Achtung: Dateien im Ziel koennen geloescht werden.
 robocopy "%SRC%" "%DST%" /MIR /R:1 /W:1 /XJ /TEE /MT:16 /LOG+:"%LOG%"
 set "RC=%ERRORLEVEL%"
@@ -144,6 +154,10 @@ goto SUMMARY
 
 :DO_TRY
 call :CHECK_DEST
+if errorlevel 1 (
+  set "RC=1"
+  goto END_ERR
+)
 echo Starte Try Run (Trockenlauf). Es werden keine Dateien veraendert.
 robocopy "%SRC%" "%DST%" /E /XC /XN /XO /L /R:1 /W:1 /XJ /TEE /MT:16 /LOG+:"%LOG%"
 set "RC=%ERRORLEVEL%"
