@@ -38,7 +38,11 @@ $localSha    = Read-Text $versionFile
 if ($localSha -ne "") { $localSha = $localSha.Trim() }
 
 Write-Host ("Remote SHA: {0}" -f $latestSha)
-Write-Host ("Local  SHA: {0}" -f ($localSha -ne "" ? $localSha : "<none>"))
+if ($localSha -and $localSha -ne "") {
+  Write-Host ("Local  SHA: {0}" -f $localSha)
+} else {
+  Write-Host "Local  SHA: <none>"
+}
 
 # 3) Nur laden, wenn sich was geändert hat
 $needDownload = $true
