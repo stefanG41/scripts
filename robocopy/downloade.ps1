@@ -1,4 +1,4 @@
-# downloade.ps1 – Synct scripts/robocopy vollständig und legt stabile Wrapper + Task-Skripte an
+# downloade.ps1 – synced scripts/robocopy vollstaendig, erzeugt Wrapper + Task-Skripte
 param(
   [string]$RepoOwner   = "stefanG41",
   [string]$RepoName    = "scripts",
@@ -6,7 +6,7 @@ param(
   [string]$InstallPath = "D:\BackupScripts\robocopy",
   [string]$PromotePath = "D:\BackupScripts",
   [string]$TasksPath   = "D:\BackupScripts\tasks",
-  # feste, eindeutige Namen der „oben“ erreichbaren Starter:
+  # Feste, eindeutige Wrapper-Namen (oben):
   [string]$ProfileWrapperName  = "backup_profile.cmd",
   [string]$PicturesWrapperName = "backup_pictures.cmd"
 )
@@ -14,13 +14,6 @@ param(
 $ErrorActionPreference = 'Stop'
 
 function Ensure-Dir { param($p) if (-not (Test-Path $p)) { New-Item -ItemType Directory -Path $p | Out-Null } }
-function Backup-Existing {
-  param($Path)
-  if (Test-Path $Path) {
-    $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-    Move-Item -Path $Path -Destination ($Path + ".bak_" + $stamp)
-  }
-}
 
 Write-Host ""
 Write-Host "=== Lade aktuelle Version von $RepoOwner/$RepoName/$Subfolder ==="
@@ -36,7 +29,7 @@ $repoInfo  = Invoke-RestMethod -Uri $apiRepo -Headers $headers
 $defaultBranch = $repoInfo.default_branch
 Write-Host ("Default Branch: {0}" -f $defaultBranch)
 
-# 2) ZIP laden und ENTIRE Subfolder kopieren
+# 2) ZIP laden und ENTIRE Subfolder kopieren (immer frisch ueberschreiben)
 $zipUrl  = "https://api.github.com/repos/$RepoOwner/$RepoName/zipball/$defaultBranch"
 $zipPath = Join-Path $env:TEMP ("robocopy_" + [guid]::NewGuid().ToString() + ".zip")
 $extDir  = Join-Path $env:TEMP ("robocopy_" + [guid]::NewGuid().ToString())
@@ -50,15 +43,28 @@ if (-not $root) { throw "ZIP-Struktur unerwartet." }
 $srcPath = Join-Path $root.FullName $Subfolder
 if (-not (Test-Path $srcPath)) { throw ("Unterordner '{0}' nicht gefunden in {1}" -f $Subfolder, $root.FullName) }
 
-# Bestehenden Stand sicher ersetzen (immer überschreiben)
+# Bestehenden Stand vorher vollstaendig entfernen, dann frisch kopieren
 if (Test-Path $InstallPath) { Remove-Item -Path $InstallPath -Recurse -Force }
 Copy-Item -Path $srcPath -Destination $InstallPath -Recurse -Force
 
+# Aufraeumen Downloadtemp
 Remove-Item $zipPath -Force
 Remove-Item $extDir -Recurse -Force
 Write-Host ("Kompletter Ordner synchronisiert nach: {0}" -f $InstallPath)
 
-# 3) Tatsächliche .bat-Dateien finden
+# 3) Zone.Identifier (Mark-of-the-Web) fuer alle heruntergeladenen Dateien entfernen
+try {
+  $allFiles = Get-ChildItem -Path $InstallPath -Recurse -File -ErrorAction SilentlyContinue
+  foreach ($f in $allFiles) {
+    Unblock-File -Path $f.FullName -ErrorAction SilentlyContinue
+  }
+  Write-Host "Zone.Identifier entfernt (Unblock-File) fuer alle Dateien im InstallPath."
+}
+catch {
+  Write-Warning ("Konnte Zone-Identifier nicht entfernen: {0}" -f $_.Exception.Message)
+}
+
+# 4) Tatsachliche .bat-Dateien finden (Profil / Bilder)
 $patternsProfile  = @('*profile*.bat','*profil*.bat')
 $patternsPictures = @('*picture*.bat','*bilder*.bat','*photos*.bat','*fotos*.bat')
 
@@ -68,12 +74,12 @@ $picturesBat = Get-ChildItem -Path $InstallPath -Recurse -Include $patternsPictu
 if (-not $profileBat)  { Write-Warning "Kein Profil-Backup .bat gefunden." }
 if (-not $picturesBat) { Write-Warning "Kein Bilder-Backup .bat gefunden." }
 
-# 4) Wrapper-CMDs mit stabilen Namen erzeugen (immer überschreiben)
+# 5) Wrapper-CMDs mit stabilen Namen erzeugen (oben im PromotePath; immer ueberschreiben)
 $profileWrapperPath  = Join-Path $PromotePath  $ProfileWrapperName
 $picturesWrapperPath = Join-Path $PromotePath  $PicturesWrapperName
 
 if ($profileBat) {
-  @"
+@"
 @echo off
 REM Wrapper fuer Profil-Backup (stabiler Name)
 setlocal
@@ -84,7 +90,7 @@ endlocal
 }
 
 if ($picturesBat) {
-  @"
+@"
 @echo off
 REM Wrapper fuer Bilder-Backup (stabiler Name)
 setlocal
@@ -94,8 +100,8 @@ endlocal
   Write-Host ("Bilder-Wrapper erstellt: {0}" -f $picturesWrapperPath)
 }
 
-# 5) Zusatzskripte fuer Aufgabenplanung (in Extra-Ordner) erzeugen
-#    - Create-Tasks.ps1 / Remove-Tasks.ps1
+# 6) Zusatzskripte fuer Aufgabenplanung (in Extra-Ordner) erzeugen
+#    - Create-Tasks.ps1 / Remove-Tasks.ps1 + passende .cmd Starter
 #    - nutzen die stabilen Wrapper-Dateien oben
 
 $createPs1 = @"
@@ -108,15 +114,11 @@ param(
 Import-Module ScheduledTasks
 
 function New-WeeklyTriggerAt([string]`$day, [string]`$time) {
-  # z.B. day="THU", time="19:00"
   New-ScheduledTaskTrigger -Weekly -DaysOfWeek `$day -At `$time
 }
 
 function Ensure-TaskFolder([string]`$folder) {
-  try { `$null = Get-ScheduledTask -TaskPath `$folder -TaskName "*" -ErrorAction Stop }
-  catch {
-    # Windows legt Ordner automatisch an, wenn Task mit TaskPath erstellt wird.
-  }
+  try { `$null = Get-ScheduledTask -TaskPath `$folder -TaskName "*" -ErrorAction Stop } catch { }
 }
 
 Ensure-TaskFolder -folder `$TaskFolder
@@ -124,7 +126,7 @@ Ensure-TaskFolder -folder `$TaskFolder
 # Principal: ohne Passwort, nur wenn User angemeldet (InteractiveToken)
 `$principal = New-ScheduledTaskPrincipal -UserId "$env:USERNAME" -LogonType InteractiveToken -RunLevel LeastPrivilege
 
-# Aktionen
+# Aktionen und Registrierung
 if (Test-Path `$ProfileCmd) {
   `$a1 = New-ScheduledTaskAction -Execute `$ProfileCmd
   Register-ScheduledTask -TaskName "Robocopy_Profile_Backup" -TaskPath `$TaskFolder -Action `$a1 `
@@ -190,12 +192,13 @@ $removeCmd  | Set-Content -Path (Join-Path $TasksPath "Remove-Tasks.cmd") -Encod
 
 Write-Host ("Zusatzskripte aktualisiert in: {0}" -f $TasksPath)
 
-# 6) Commit-Info (informativ)
+# 7) Commit-Info (informativ)
 try {
   $apiCommit = "https://api.github.com/repos/$RepoOwner/$RepoName/commits/$defaultBranch"
   $c = Invoke-RestMethod -Uri $apiCommit -Headers $headers
   Write-Host ("Stand: {0} - {1}" -f $c.commit.author.date, $c.sha.Substring(0,7))
-} catch {
+}
+catch {
   Write-Warning ("Konnte Commit-Info nicht laden: {0}" -f $_.Exception.Message)
 }
 
