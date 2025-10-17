@@ -1,4 +1,3 @@
-# downloade.ps1 – synced scripts/robocopy vollstaendig, erzeugt Wrapper + Task-Skripte
 param(
   [string]$RepoOwner   = "stefanG41",
   [string]$RepoName    = "scripts",
@@ -6,7 +5,6 @@ param(
   [string]$InstallPath = "D:\BackupScripts\robocopy",
   [string]$PromotePath = "D:\BackupScripts",
   [string]$TasksPath   = "D:\BackupScripts\tasks",
-  # Feste, eindeutige Wrapper-Namen (oben):
   [string]$ProfileWrapperName  = "backup_profile.cmd",
   [string]$PicturesWrapperName = "backup_pictures.cmd"
 )
@@ -14,67 +12,81 @@ param(
 $ErrorActionPreference = 'Stop'
 
 function Ensure-Dir { param($p) if (-not (Test-Path $p)) { New-Item -ItemType Directory -Path $p | Out-Null } }
+function Read-Text($p)  { if (Test-Path $p) { Get-Content -Path $p -Raw -ErrorAction SilentlyContinue } else { "" } }
+function Write-Text($p,$txt) { $dir = Split-Path $p; if ($dir) { Ensure-Dir $dir }; Set-Content -Path $p -Value $txt -Encoding ASCII -Force }
 
 Write-Host ""
-Write-Host "=== Lade aktuelle Version von $RepoOwner/$RepoName/$Subfolder ==="
+Write-Host "=== Sync Git $RepoOwner/$RepoName/$Subfolder ==="
 
 Ensure-Dir (Split-Path $InstallPath -Parent)
 Ensure-Dir $PromotePath
 Ensure-Dir $TasksPath
 
-# 1) Default-Branch ermitteln
+# 1) Aktuelle Commit-SHA holen
 $headers   = @{ 'User-Agent'='PowerShell'; 'Accept'='application/vnd.github+json' }
 $apiRepo   = "https://api.github.com/repos/$RepoOwner/$RepoName"
 $repoInfo  = Invoke-RestMethod -Uri $apiRepo -Headers $headers
 $defaultBranch = $repoInfo.default_branch
-Write-Host ("Default Branch: {0}" -f $defaultBranch)
 
-# 2) ZIP laden und ENTIRE Subfolder kopieren (immer frisch ueberschreiben)
-$zipUrl  = "https://api.github.com/repos/$RepoOwner/$RepoName/zipball/$defaultBranch"
-$zipPath = Join-Path $env:TEMP ("robocopy_" + [guid]::NewGuid().ToString() + ".zip")
-$extDir  = Join-Path $env:TEMP ("robocopy_" + [guid]::NewGuid().ToString())
+$apiCommit = "https://api.github.com/repos/$RepoOwner/$RepoName/commits/$defaultBranch"
+$commitInfo = Invoke-RestMethod -Uri $apiCommit -Headers $headers
+$latestSha  = $commitInfo.sha.Substring(0,40)
 
-Write-Host "Lade ZIP..."
-Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -Headers $headers
-Expand-Archive -Path $zipPath -DestinationPath $extDir -Force
+# 2) Lokale Version lesen
+$versionFile = Join-Path $InstallPath ".version"
+$localSha    = Read-Text $versionFile
+if ($localSha -ne "") { $localSha = $localSha.Trim() }
 
-$root = Get-ChildItem -Directory $extDir | Select-Object -First 1
-if (-not $root) { throw "ZIP-Struktur unerwartet." }
-$srcPath = Join-Path $root.FullName $Subfolder
-if (-not (Test-Path $srcPath)) { throw ("Unterordner '{0}' nicht gefunden in {1}" -f $Subfolder, $root.FullName) }
+Write-Host ("Remote SHA: {0}" -f $latestSha)
+Write-Host ("Local  SHA: {0}" -f ($localSha -ne "" ? $localSha : "<none>"))
 
-# Bestehenden Stand vorher vollstaendig entfernen, dann frisch kopieren
-if (Test-Path $InstallPath) { Remove-Item -Path $InstallPath -Recurse -Force }
-Copy-Item -Path $srcPath -Destination $InstallPath -Recurse -Force
-
-# Aufraeumen Downloadtemp
-Remove-Item $zipPath -Force
-Remove-Item $extDir -Recurse -Force
-Write-Host ("Kompletter Ordner synchronisiert nach: {0}" -f $InstallPath)
-
-# 3) Zone.Identifier (Mark-of-the-Web) fuer alle heruntergeladenen Dateien entfernen
-try {
-  $allFiles = Get-ChildItem -Path $InstallPath -Recurse -File -ErrorAction SilentlyContinue
-  foreach ($f in $allFiles) {
-    Unblock-File -Path $f.FullName -ErrorAction SilentlyContinue
-  }
-  Write-Host "Zone.Identifier entfernt (Unblock-File) fuer alle Dateien im InstallPath."
-}
-catch {
-  Write-Warning ("Konnte Zone-Identifier nicht entfernen: {0}" -f $_.Exception.Message)
+# 3) Nur laden, wenn sich was geändert hat
+$needDownload = $true
+if ($localSha -eq $latestSha -and (Test-Path $InstallPath)) {
+  $needDownload = $false
+  Write-Host "Keine Änderungen auf GitHub – Skip Download."
 }
 
-# 4) Tatsachliche .bat-Dateien finden (Profil / Bilder)
+if ($needDownload) {
+  $zipUrl  = "https://api.github.com/repos/$RepoOwner/$RepoName/zipball/$defaultBranch"
+  $zipPath = Join-Path $env:TEMP ("robocopy_" + [guid]::NewGuid().ToString() + ".zip")
+  $extDir  = Join-Path $env:TEMP ("robocopy_" + [guid]::NewGuid().ToString())
+
+  Write-Host "Lade ZIP..."
+  Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -Headers $headers
+  Expand-Archive -Path $zipPath -DestinationPath $extDir -Force
+
+  $root = Get-ChildItem -Directory $extDir | Select-Object -First 1
+  if (-not $root) { throw "ZIP-Struktur unerwartet." }
+  $srcPath = Join-Path $root.FullName $Subfolder
+  if (-not (Test-Path $srcPath)) { throw ("Unterordner '{0}' nicht gefunden in {1}" -f $Subfolder, $root.FullName) }
+
+  if (Test-Path $InstallPath) { Remove-Item -Path $InstallPath -Recurse -Force }
+  Copy-Item -Path $srcPath -Destination $InstallPath -Recurse -Force
+
+  # Temp aufräumen
+  Remove-Item $zipPath -Force
+  Remove-Item $extDir -Recurse -Force
+
+  # MOTW entfernen
+  try {
+    Get-ChildItem -Path $InstallPath -Recurse -File -ErrorAction SilentlyContinue |
+      ForEach-Object { Unblock-File -Path $_.FullName -ErrorAction SilentlyContinue }
+    Write-Host "Unblock-File für alle synchronisierten Dateien ausgeführt."
+  } catch { Write-Warning ("Unblock-File Fehler: {0}" -f $_.Exception.Message) }
+
+  # neue Version schreiben
+  Write-Text $versionFile $latestSha
+  Write-Host ("Ordner synchronisiert nach: {0}" -f $InstallPath)
+}
+
+# 4) Wrapper (stabile Namen) aktualisieren
 $patternsProfile  = @('*profile*.bat','*profil*.bat')
 $patternsPictures = @('*picture*.bat','*bilder*.bat','*photos*.bat','*fotos*.bat')
 
 $profileBat  = Get-ChildItem -Path $InstallPath -Recurse -Include $patternsProfile  -ErrorAction SilentlyContinue | Select-Object -First 1
 $picturesBat = Get-ChildItem -Path $InstallPath -Recurse -Include $patternsPictures -ErrorAction SilentlyContinue | Select-Object -First 1
 
-if (-not $profileBat)  { Write-Warning "Kein Profil-Backup .bat gefunden." }
-if (-not $picturesBat) { Write-Warning "Kein Bilder-Backup .bat gefunden." }
-
-# 5) Wrapper-CMDs mit stabilen Namen erzeugen (oben im PromotePath; immer ueberschreiben)
 $profileWrapperPath  = Join-Path $PromotePath  $ProfileWrapperName
 $picturesWrapperPath = Join-Path $PromotePath  $PicturesWrapperName
 
@@ -86,7 +98,7 @@ setlocal
 call "$($profileBat.FullName)"
 endlocal
 "@ | Set-Content -Path $profileWrapperPath -Encoding ASCII -Force
-  Write-Host ("Profil-Wrapper erstellt: {0}" -f $profileWrapperPath)
+  Write-Host ("Profil-Wrapper: {0}" -f $profileWrapperPath)
 }
 
 if ($picturesBat) {
@@ -97,111 +109,10 @@ setlocal
 call "$($picturesBat.FullName)"
 endlocal
 "@ | Set-Content -Path $picturesWrapperPath -Encoding ASCII -Force
-  Write-Host ("Bilder-Wrapper erstellt: {0}" -f $picturesWrapperPath)
+  Write-Host ("Bilder-Wrapper: {0}" -f $picturesWrapperPath)
 }
 
-# 6) Zusatzskripte fuer Aufgabenplanung (in Extra-Ordner) erzeugen
-#    - Create-Tasks.ps1 / Remove-Tasks.ps1 + passende .cmd Starter
-#    - nutzen die stabilen Wrapper-Dateien oben
+# 5) (Optional) Commit-Info
+Write-Host ("Stand: {0} - {1}" -f $commitInfo.commit.author.date, $latestSha.Substring(0,7))
 
-$createPs1 = @"
-param(
-  [string]`$ProfileCmd  = "$profileWrapperPath",
-  [string]`$PicturesCmd = "$picturesWrapperPath",
-  [string]`$TaskFolder  = "\Robocopy"
-)
-
-Import-Module ScheduledTasks
-
-function New-WeeklyTriggerAt([string]`$day, [string]`$time) {
-  New-ScheduledTaskTrigger -Weekly -DaysOfWeek `$day -At `$time
-}
-
-function Ensure-TaskFolder([string]`$folder) {
-  try { `$null = Get-ScheduledTask -TaskPath `$folder -TaskName "*" -ErrorAction Stop } catch { }
-}
-
-Ensure-TaskFolder -folder `$TaskFolder
-
-# Principal: ohne Passwort, nur wenn User angemeldet (InteractiveToken)
-`$principal = New-ScheduledTaskPrincipal -UserId "$env:USERNAME" -LogonType InteractiveToken -RunLevel LeastPrivilege
-
-# Aktionen und Registrierung
-if (Test-Path `$ProfileCmd) {
-  `$a1 = New-ScheduledTaskAction -Execute `$ProfileCmd
-  Register-ScheduledTask -TaskName "Robocopy_Profile_Backup" -TaskPath `$TaskFolder -Action `$a1 `
-    -Trigger (New-WeeklyTriggerAt -day "THU" -time "19:00") -Principal `$principal -Force | Out-Null
-  Write-Host "Task erstellt: $TaskFolder\Robocopy_Profile_Backup"
-}
-
-if (Test-Path `$PicturesCmd) {
-  `$a2 = New-ScheduledTaskAction -Execute `$PicturesCmd
-  Register-ScheduledTask -TaskName "Robocopy_Pictures_Backup" -TaskPath `$TaskFolder -Action `$a2 `
-    -Trigger (New-WeeklyTriggerAt -day "THU" -time "19:15") -Principal `$principal -Force | Out-Null
-  Write-Host "Task erstellt: $TaskFolder\Robocopy_Pictures_Backup"
-}
-"@
-
-$removePs1 = @"
-param(
-  [string]`$TaskFolder = "\Robocopy"
-)
-
-Import-Module ScheduledTasks
-
-foreach (`$name in "Robocopy_Profile_Backup","Robocopy_Pictures_Backup") {
-  try {
-    Unregister-ScheduledTask -TaskName `$name -TaskPath `$TaskFolder -Confirm:`$false -ErrorAction Stop
-    Write-Host "Task entfernt: $TaskFolder\`$name"
-  } catch {
-    Write-Warning "Task nicht gefunden oder konnte nicht entfernt werden: $TaskFolder\`$name"
-  }
-}
-"@
-
-$createCmd = @"
-@echo off
-setlocal
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0Create-Tasks.ps1"
-if errorlevel 1 (
-  echo Fehler beim Erstellen der Tasks.
-  exit /b 1
-)
-echo Tasks erstellt.
-pause
-endlocal
-"@
-
-$removeCmd = @"
-@echo off
-setlocal
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0Remove-Tasks.ps1"
-if errorlevel 1 (
-  echo Fehler beim Entfernen der Tasks.
-  exit /b 1
-)
-echo Tasks entfernt.
-pause
-endlocal
-"@
-
-$createPs1  | Set-Content -Path (Join-Path $TasksPath "Create-Tasks.ps1") -Encoding ASCII -Force
-$removePs1  | Set-Content -Path (Join-Path $TasksPath "Remove-Tasks.ps1") -Encoding ASCII -Force
-$createCmd  | Set-Content -Path (Join-Path $TasksPath "Create-Tasks.cmd") -Encoding ASCII -Force
-$removeCmd  | Set-Content -Path (Join-Path $TasksPath "Remove-Tasks.cmd") -Encoding ASCII -Force
-
-Write-Host ("Zusatzskripte aktualisiert in: {0}" -f $TasksPath)
-
-# 7) Commit-Info (informativ)
-try {
-  $apiCommit = "https://api.github.com/repos/$RepoOwner/$RepoName/commits/$defaultBranch"
-  $c = Invoke-RestMethod -Uri $apiCommit -Headers $headers
-  Write-Host ("Stand: {0} - {1}" -f $c.commit.author.date, $c.sha.Substring(0,7))
-}
-catch {
-  Write-Warning ("Konnte Commit-Info nicht laden: {0}" -f $_.Exception.Message)
-}
-
-Write-Host ""
-Write-Host ("Fertig. Wrapper: {0}, {1}" -f $profileWrapperPath, $picturesWrapperPath)
-Write-Host ("Tasks-Skripte: {0}" -f $TasksPath)
+Write-Host "Fertig."
