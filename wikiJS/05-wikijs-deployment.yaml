@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wikijs
+  namespace: wikijs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wikijs
+  template:
+    metadata:
+      labels:
+        app: wikijs
+    spec:
+      containers:
+        - name: wikijs
+          image: ghcr.io/requarks/wiki:2
+          ports:
+            - containerPort: 3000
+          env:
+            - name: DB_TYPE
+              value: "postgres"
+            - name: DB_HOST
+              value: "wikijs-postgres"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_USER
+              value: "wikijs"
+            - name: DB_NAME
+              value: "wiki"
+            - name: DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: wikijs-postgres-secret
+                  key: POSTGRES_PASSWORD
+            # optional: für mehrere Replikas später
+            # - name: HA_ACTIVE
+            #   value: "true"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wikijs-service
+  namespace: wikijs
+spec:
+  type: NodePort        # zum Testen; später evtl. Ingress
+  selector:
+    app: wikijs
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+      nodePort: 32080   # NodePort im Bereich 30000-32767, anpassbar
